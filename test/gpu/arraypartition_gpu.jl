@@ -24,13 +24,13 @@ b = ArrayPartition(([0.0f0] |> cu, [0.0f0] |> cu, [0.0f0] |> cu))
 
 # Test adapt from ArrayPartition with CuArrays to ArrayPartition with CPU arrays
 
-a = CuArray(Float64.([1., 2., 3., 4.]))
-b = CuArray(Float64.([1., 2., 3., 4.]))
+a = CuArray(Float64.([1.0, 2.0, 3.0, 4.0]))
+b = CuArray(Float64.([1.0, 2.0, 3.0, 4.0]))
 part_a_gpu = ArrayPartition(a, b)
 part_a = adapt(Array{Float32}, part_a_gpu)
 
-c = Float32.([1., 2., 3., 4.])
-d = Float32.([1., 2., 3., 4.])
+c = Float32.([1.0, 2.0, 3.0, 4.0])
+d = Float32.([1.0, 2.0, 3.0, 4.0])
 part_b = ArrayPartition(c, d)
 
 @test part_a == part_b # Test equality
