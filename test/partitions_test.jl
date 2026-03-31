@@ -178,13 +178,17 @@ recursivecopy!(dest_ap, src_ap)
 @inferred mapreduce(string, *, x)
 @test mapreduce(i -> string(i) * "q", *, x) == "1q2q3.0q4.0q"
 
-# any/all — optimized partition-level iteration requires RecursiveArrayToolsArrayPartitionAnyAll
-# to avoid ~780 invalidations. Without the extension, Base's AbstractArray fallback is used.
-# On GPU arrays, the fallback triggers scalar indexing errors — load the subpackage to fix.
-@test which(any, Tuple{Function, ArrayPartition}).module === Base
-@test which(all, Tuple{Function, ArrayPartition}).module === Base
+# any/all — on Julia ≥ 1.13, optimized methods are inlined (1 invalidation).
+# On older Julia, they require RecursiveArrayToolsArrayPartitionAnyAll (~780 invalidations).
+@static if VERSION >= v"1.13.0-DEV.0"
+    @test which(any, Tuple{Function, ArrayPartition}).module === RecursiveArrayTools
+    @test which(all, Tuple{Function, ArrayPartition}).module === RecursiveArrayTools
+else
+    @test which(any, Tuple{Function, ArrayPartition}).module === Base
+    @test which(all, Tuple{Function, ArrayPartition}).module === Base
+end
 
-# Correctness tests (work via AbstractArray fallback on CPU)
+# Correctness tests
 @test !any(isnan, AP[[1, 2], [3.0, 4.0]])
 @test !any(isnan, AP[[3.0, 4.0]])
 @test  any(isnan, AP[[NaN], [3.0, 4.0]])
