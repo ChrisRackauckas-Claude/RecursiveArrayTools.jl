@@ -741,9 +741,22 @@ ODEProblem(func, AP[ [1.,2.,3.], [1. 2.;3. 4.] ], (0, 1)) |> solve
 """
 struct AP end
 
-# Optimized partition-level any/all for ArrayPartition lives in
-# RecursiveArrayToolsArrayPartitionAnyAll to avoid ~780 invalidations.
-# Without the extension, any/all uses the AbstractArray element-by-element
-# fallback, which triggers scalar indexing errors on GPU arrays.
-# Load the subpackage to fix:
+# Optimized partition-level any/all for ArrayPartition.
+#
+# On Julia ≥ 1.13 (JuliaLang/julia#61184), Base removes the f::Function
+# restriction from any/all, so defining any(f, ::ArrayPartition) causes
+# only 1 invalidation (down from ~780). Safe to inline directly.
+#
+# On Julia < 1.13, the methods live in RecursiveArrayToolsArrayPartitionAnyAll
+# to avoid the invalidations. Without the extension, any/all uses the
+# AbstractArray element-by-element fallback, which triggers scalar indexing
+# errors on GPU arrays. Load the subpackage to fix:
 #     using RecursiveArrayToolsArrayPartitionAnyAll
+@static if VERSION >= v"1.13.0-DEV.0"
+    Base.any(f, A::ArrayPartition) = any((any(f, x) for x in A.x))
+    Base.any(f::Function, A::ArrayPartition) = any((any(f, x) for x in A.x))
+    Base.any(A::ArrayPartition) = any(identity, A)
+    Base.all(f, A::ArrayPartition) = all((all(f, x) for x in A.x))
+    Base.all(f::Function, A::ArrayPartition) = all((all(f, x) for x in A.x))
+    Base.all(A::ArrayPartition) = all(identity, A)
+end
