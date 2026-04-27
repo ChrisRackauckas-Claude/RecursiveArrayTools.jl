@@ -34,11 +34,16 @@ function Base.similar(A::NamedArrayPartition)
     )
 end
 
-# return ArrayPartition when possible, otherwise next best thing of the correct size
+# return NamedArrayPartition when the requested dims still match the partition layout;
+# otherwise fall back to the plain backing array of the correct size. ArrayPartition's
+# own `similar(A, dims)` already does this degradation (it returns a Vector when
+# `dims != size(A)`), and we simply propagate that result instead of trying to
+# wrap a non-ArrayPartition in a NamedArrayPartition (which would hit the inner
+# constructor signature `NamedArrayPartition(::A<:ArrayPartition, ::NamedTuple)`).
 function Base.similar(A::NamedArrayPartition, dims::NTuple{N, Int}) where {N}
-    return NamedArrayPartition(
-        similar(getfield(A, :array_partition), dims), getfield(A, :names_to_indices)
-    )
+    inner = similar(getfield(A, :array_partition), dims)
+    inner isa ArrayPartition || return inner
+    return NamedArrayPartition(inner, getfield(A, :names_to_indices))
 end
 
 # similar array partition of common type
@@ -48,11 +53,10 @@ end
     )
 end
 
-# return ArrayPartition when possible, otherwise next best thing of the correct size
 function Base.similar(A::NamedArrayPartition, ::Type{T}, dims::NTuple{N, Int}) where {T, N}
-    return NamedArrayPartition(
-        similar(getfield(A, :array_partition), T, dims), getfield(A, :names_to_indices)
-    )
+    inner = similar(getfield(A, :array_partition), T, dims)
+    inner isa ArrayPartition || return inner
+    return NamedArrayPartition(inner, getfield(A, :names_to_indices))
 end
 
 # similar array partition with different types
