@@ -664,37 +664,51 @@ Base.@propagate_inbounds function _getindex(
         A::AbstractVectorOfArray, ::NotSymbolic,
         I::Union{Int, AbstractArray{Int}, AbstractArray{Bool}, Colon}...
     )
-    return if last(I) isa Int
-        A.u[last(I)][Base.front(I)...]
-    else
-        stack(getindex.(A.u[last(I)], tuple.(Base.front(I))...))
+    if last(I) isa Int
+        return A.u[last(I)][Base.front(I)...]
     end
+    col_idxs = last(I)
+    front = Base.front(I)
+    # Fast path: when every prefix index is a scalar Int, the result is a
+    # plain Vector of scalars, one per selected column. A direct
+    # comprehension over A.u avoids both the `A.u[col_idxs]` copy of the
+    # outer container and the tuple-broadcast machinery of the fallback.
+    if all(idx -> idx isa Int, front)
+        cols = col_idxs isa Colon ? A.u : view(A.u, col_idxs)
+        return [u[front...] for u in cols]
+    end
+    return stack(getindex.(A.u[col_idxs], tuple.(front)...))
 end
 
 Base.@propagate_inbounds function _getindex(
         A::AbstractDiffEqArray, ::NotSymbolic,
         I::Union{Int, AbstractArray{Int}, AbstractArray{Bool}, Colon}...
     )
-    return if last(I) isa Int
-        A.u[last(I)][Base.front(I)...]
-    else
-        col_idxs = last(I)
-        # Only preserve DiffEqArray type if all prefix indices are Colons (selecting whole inner arrays)
-        if all(idx -> idx isa Colon, Base.front(I))
-            # For Colon, select all columns
-            if col_idxs isa Colon
-                col_idxs = eachindex(A.u)
-            end
-            # For DiffEqArray, we need to preserve the time values and type
-            # Create a vector of sliced arrays instead of stacking into higher-dim array
-            u_slice = [A.u[col][Base.front(I)...] for col in col_idxs]
-            # Return as DiffEqArray with sliced time values
-            return DiffEqArray(u_slice, A.t[col_idxs], parameter_values(A), symbolic_container(A))
-        else
-            # Prefix indices are not all Colons - do the same as VectorOfArray
-            # (stack the results into a higher-dimensional array)
-            return stack(getindex.(A.u[col_idxs], tuple.(Base.front(I))...))
+    if last(I) isa Int
+        return A.u[last(I)][Base.front(I)...]
+    end
+    col_idxs = last(I)
+    front = Base.front(I)
+    # Only preserve DiffEqArray type if all prefix indices are Colons (selecting whole inner arrays)
+    if all(idx -> idx isa Colon, front)
+        # For Colon, select all columns
+        if col_idxs isa Colon
+            col_idxs = eachindex(A.u)
         end
+        # For DiffEqArray, we need to preserve the time values and type
+        # Create a vector of sliced arrays instead of stacking into higher-dim array
+        u_slice = [A.u[col][front...] for col in col_idxs]
+        # Return as DiffEqArray with sliced time values
+        return DiffEqArray(u_slice, A.t[col_idxs], parameter_values(A), symbolic_container(A))
+    elseif all(idx -> idx isa Int, front)
+        # Same fast path as the AbstractVectorOfArray fallback above: a
+        # scalar prefix selects a plain Vector of scalars, one per column.
+        cols = col_idxs isa Colon ? A.u : view(A.u, col_idxs)
+        return [u[front...] for u in cols]
+    else
+        # Prefix indices are not all Colons or all Ints - do the same as VectorOfArray
+        # (stack the results into a higher-dimensional array)
+        return stack(getindex.(A.u[col_idxs], tuple.(front)...))
     end
 end
 Base.@propagate_inbounds function _getindex(
