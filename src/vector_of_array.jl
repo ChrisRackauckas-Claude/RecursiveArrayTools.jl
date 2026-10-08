@@ -955,10 +955,24 @@ end
 Base.@propagate_inbounds function Base.getindex(
         A::AbstractVectorOfArray{T, N}, I::Vararg{Int, N}
     ) where {T, N}
-    @boundscheck checkbounds(A, I...)
     col = I[N]
     inner_I = Base.front(I)
-    u_col = A.u[col]
+    u = A.u
+    # Fast path: `checkbounds(A, I...)` below calls `size(A)`, which scans every
+    # inner array to find the ragged maximum (O(n) in the number of columns).
+    # When `I` is inside the selected inner array's own bounds, it is always a
+    # valid index into `A`, so this is always correct and avoids that scan.
+    # N == 1 means `u`'s elements are themselves scalars (see the
+    # `VectorOfArray(::AbstractVector)` constructor), so `size(A)` is already
+    # O(1) there and `inner_I` is empty; skip the fast path in that case.
+    if N > 1 && checkbounds(Bool, u, col)
+        u_col = @inbounds u[col]
+        if checkbounds(Bool, u_col, inner_I...)
+            return @inbounds u_col[inner_I...]
+        end
+    end
+    @boundscheck checkbounds(A, I...)
+    u_col = u[col]
     # Return zero for indices outside ragged storage
     for d in 1:(N - 1)
         if inner_I[d] > size(u_col, d)

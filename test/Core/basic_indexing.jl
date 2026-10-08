@@ -1,6 +1,16 @@
 using RecursiveArrayTools, Test
 using RecursiveArrayToolsShorthandConstructors
 
+# Counts calls to `size` on its wrapped vector, used to check that an inner
+# array is not scanned once per column of an `AbstractVectorOfArray`.
+const counter = Ref(0)
+struct CountingVec{T} <: AbstractVector{T}
+    data::Vector{T}
+end
+Base.size(c::CountingVec) = (counter[] += 1; size(c.data))
+Base.getindex(c::CountingVec, i::Int) = c.data[i]
+Base.IndexStyle(::Type{<:CountingVec}) = IndexLinear()
+
 # Example Problem
 recs = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 testa = cat(recs..., dims = 2)
@@ -394,3 +404,28 @@ x = VectorOfArray(StructArray{SVector{1, Float64}}(ntuple(_ -> [1.0, 2.0], 1)))
 y = 2 * x
 @. x = y
 @test all(all.(y .== x))
+
+@testset "getindex O(1) fast path keeps BoundsError/ragged semantics" begin
+    # In-bounds getindex is O(1) in the number of inner arrays: the old path
+    # bounds-checked via `size(A)`, which calls `size` on every inner array to
+    # find the ragged maximum (O(n)). Count `size` calls on the inner arrays
+    # with `CountingVec` to check this without relying on timing.
+    counter[] = 0
+    n = 1000
+    A = VectorOfArray([CountingVec(rand(2)) for _ in 1:n])
+    @test A[2, 7] == A.u[7][2]
+    @test counter[] < n # far fewer than one `size` call per inner array
+
+    # Ragged: zero-padding inside the max size is unchanged
+    R = VA[[1.0, 2.0], [3.0], [4.0, 5.0, 6.0]]
+    @test R[1, 1] == 1.0
+    @test R[2, 1] == 2.0
+    @test R[3, 2] == 0.0 # inner array 2 (length 1) padded with zero at row 3
+    @test R[1, 3] == 4.0
+
+    # Truly out-of-range indices still throw, on both dimensions
+    @test_throws BoundsError R[4, 1] # row 4 exceeds the global max size (3)
+    @test_throws BoundsError R[1, 4] # column 4 exceeds the number of inner arrays
+    @test_throws BoundsError R[0, 1]
+    @test_throws BoundsError R[1, 0]
+end
