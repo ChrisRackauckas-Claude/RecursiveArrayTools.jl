@@ -11,6 +11,17 @@ Base.size(c::CountingVec) = (counter[] += 1; size(c.data))
 Base.getindex(c::CountingVec, i::Int) = c.data[i]
 Base.IndexStyle(::Type{<:CountingVec}) = IndexLinear()
 
+# A vector whose own indices do not start at 1, e.g. `OffsetVec(v, -1)` has
+# axes `0:length(v)-1`, like `OffsetArrays.OffsetArray(v, 0:length(v)-1)`.
+struct OffsetVec{T} <: AbstractVector{T}
+    data::Vector{T}
+    offset::Int
+end
+Base.axes(o::OffsetVec) = (o.offset .+ (1:length(o.data)),)
+Base.size(o::OffsetVec) = size(o.data)
+Base.getindex(o::OffsetVec, i::Int) = o.data[i - o.offset]
+Base.IndexStyle(::Type{<:OffsetVec}) = IndexLinear()
+
 # Example Problem
 recs = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
 testa = cat(recs..., dims = 2)
@@ -406,26 +417,32 @@ y = 2 * x
 @test all(all.(y .== x))
 
 @testset "getindex O(1) fast path keeps BoundsError/ragged semantics" begin
-    # In-bounds getindex is O(1) in the number of inner arrays: the old path
-    # bounds-checked via `size(A)`, which calls `size` on every inner array to
-    # find the ragged maximum (O(n)). Count `size` calls on the inner arrays
-    # with `CountingVec` to check this without relying on timing.
+    # count `size` calls on the inner arrays to check the fast path is O(1)
+    # without relying on timing
     counter[] = 0
     n = 1000
     A = VectorOfArray([CountingVec(rand(2)) for _ in 1:n])
     @test A[2, 7] == A.u[7][2]
     @test counter[] < n # far fewer than one `size` call per inner array
 
-    # Ragged: zero-padding inside the max size is unchanged
+    # ragged: zero-padding inside the max size is unchanged
     R = VA[[1.0, 2.0], [3.0], [4.0, 5.0, 6.0]]
     @test R[1, 1] == 1.0
     @test R[2, 1] == 2.0
     @test R[3, 2] == 0.0 # inner array 2 (length 1) padded with zero at row 3
     @test R[1, 3] == 4.0
 
-    # Truly out-of-range indices still throw, on both dimensions
+    # truly out-of-range indices still throw, on both dimensions
     @test_throws BoundsError R[4, 1] # row 4 exceeds the global max size (3)
     @test_throws BoundsError R[1, 4] # column 4 exceeds the number of inner arrays
     @test_throws BoundsError R[0, 1]
     @test_throws BoundsError R[1, 0]
+end
+
+@testset "getindex fast path rejects a non-1-based inner axis (OffsetArray)" begin
+    # minimal non-1-based AbstractVector, avoiding an OffsetArrays dependency
+    O0 = VA[OffsetVec([1.0, 2.0, 3.0], -1), OffsetVec([4.0, 5.0, 6.0], -1)] # axes 0:2
+    O2 = VA[OffsetVec([1.0, 2.0, 3.0], 1), OffsetVec([4.0, 5.0, 6.0], 1)] # axes 2:4
+    @test_throws BoundsError O0[0, 1]
+    @test_throws BoundsError O2[4, 1]
 end

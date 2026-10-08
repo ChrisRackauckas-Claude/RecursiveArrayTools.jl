@@ -958,16 +958,23 @@ Base.@propagate_inbounds function Base.getindex(
     col = I[N]
     inner_I = Base.front(I)
     u = A.u
-    # Fast path: `checkbounds(A, I...)` below calls `size(A)`, which scans every
-    # inner array to find the ragged maximum (O(n) in the number of columns).
-    # When `I` is inside the selected inner array's own bounds, it is always a
-    # valid index into `A`, so this is always correct and avoids that scan.
-    # N == 1 means `u`'s elements are themselves scalars (see the
-    # `VectorOfArray(::AbstractVector)` constructor), so `size(A)` is already
-    # O(1) there and `inner_I` is empty; skip the fast path in that case.
+    # Fast path avoiding the O(n) `size(A)` scan below. `size(u_col, d) <=
+    # size(A, d)` always holds, so a 1-based bound against `size(u_col, d)` is
+    # sufficient for an in-bounds index into `A`. Must not use
+    # `checkbounds(u_col, ...)`: that respects a non-1-based inner axis (e.g.
+    # OffsetArray) and would wrongly accept an index `A`'s 1-based contract
+    # must reject. N == 1 stores scalars in `u` directly (no inner array),
+    # where `size(A)` is already O(1); skip the fast path there.
     if N > 1 && checkbounds(Bool, u, col)
         u_col = @inbounds u[col]
-        if checkbounds(Bool, u_col, inner_I...)
+        in_inner_bounds = true
+        for d in 1:(N - 1)
+            if !(1 <= inner_I[d] <= size(u_col, d))
+                in_inner_bounds = false
+                break
+            end
+        end
+        if in_inner_bounds
             return @inbounds u_col[inner_I...]
         end
     end
