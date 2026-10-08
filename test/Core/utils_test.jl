@@ -152,6 +152,31 @@ end
     @test a.u[1][1] == 1.0
 end
 
+@testset "recursivecopy! destination shorter than source throws" begin
+    b = [MVector{2, Float64}(0, 0)]
+    a = [MVector{2, Float64}(1, 1), MVector{2, Float64}(2, 2)]
+    @test_throws DimensionMismatch recursivecopy!(b, a)
+
+    # matching lengths still work
+    b2 = [MVector{2, Float64}(0, 0), MVector{2, Float64}(0, 0)]
+    recursivecopy!(b2, a)
+    @test b2[1] == [1.0, 1.0]
+    @test b2[2] == [2.0, 2.0]
+end
+
+@testset "copyat_or_push! rejects non-positive indices" begin
+    vals = [[1, 2], [3, 4]]
+    @test_throws BoundsError copyat_or_push!(vals, 0, [9, 9])
+    @test_throws BoundsError copyat_or_push!(vals, -1, [9, 9])
+    @test vals == [[1, 2], [3, 4]] # unchanged by the rejected calls
+
+    # normal update and append still work
+    copyat_or_push!(vals, 1, [9, 9])
+    @test vals[1] == [9, 9]
+    copyat_or_push!(vals, 3, [5, 6])
+    @test vals == [[9, 9], [3, 4], [5, 6]]
+end
+
 # OrdinaryDiffEq.jl#1365: recursivecopy must not broadcast-assign into an
 # immutable outer container such as SVector of arrays.
 @testset "recursivecopy VectorOfArray with SVector outer (ODE#1365)" begin
