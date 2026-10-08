@@ -465,3 +465,18 @@ end
     c = copy(Broadcast.broadcasted(+, a, b))
     @test all(x -> x.instantiated, c.x)
 end
+
+@testset "Broadcast on 0-partition ArrayPartition" begin
+    # _homog_ap(::ArrayPartition{T,S}) called fieldtype(S, 1) without guarding
+    # fieldcount(S) == 0, throwing BoundsError(Tuple{}, 1) for ArrayPartition().
+    dest = ArrayPartition()
+    dest .= ArrayPartition() .+ 1
+    @test dest == ArrayPartition()
+
+    @test copy(Broadcast.broadcasted(+, ArrayPartition(), 1)) == ArrayPartition()
+    @test ArrayPartition() .+ 1 == ArrayPartition()
+
+    dest2 = ArrayPartition()
+    copyto!(dest2, ArrayPartition())
+    @test dest2 == ArrayPartition()
+end

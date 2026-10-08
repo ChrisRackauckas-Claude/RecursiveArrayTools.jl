@@ -506,10 +506,8 @@ end
 end
 
 # Whether every partition of an ArrayPartition, or every ArrayPartition argument of a
-# Broadcasted tree, has the same partition type. A type-level check so it constant-folds
-# (the previous `all(x isa typeof(first(dest.x)) for x in dest.x)` ran, and allocated, at
-# runtime, and only looked at `dest`, ignoring the broadcast arguments).
-@inline _homog_ap(::ArrayPartition{T, S}) where {T, S} = S <: NTuple{fieldcount(S), fieldtype(S, 1)}
+# Broadcasted tree, has the same partition type. A type-level check so it constant-folds.
+@inline _homog_ap(::ArrayPartition{T, S}) where {T, S} = fieldcount(S) == 0 || S <: NTuple{fieldcount(S), fieldtype(S, 1)}
 @inline _homog_ap(bc::Broadcast.Broadcasted) = _homog_ap_args(bc.args)
 @inline _homog_ap(x) = true
 @inline _homog_ap_args(args::Tuple) = _homog_ap(first(args)) && _homog_ap_args(Base.tail(args))
