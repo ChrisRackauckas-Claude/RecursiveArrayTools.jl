@@ -965,7 +965,11 @@ Base.@propagate_inbounds function Base.getindex(
     # OffsetArray) and would wrongly accept an index `A`'s 1-based contract
     # must reject. N == 1 stores scalars in `u` directly (no inner array),
     # where `size(A)` is already O(1); skip the fast path there.
-    if N > 1 && checkbounds(Bool, u, col)
+    # `A`'s column dimension is likewise 1-based over `length(u)` regardless
+    # of `u`'s own axes (e.g. an OffsetVector container): `1 <= col <=
+    # length(u)` matches that contract, and `checkbounds(Bool, u, col)` is
+    # still required since `u`'s own axes need not be `1:length(u)`.
+    if N > 1 && 1 <= col <= length(u) && checkbounds(Bool, u, col)
         u_col = @inbounds u[col]
         in_inner_bounds = true
         for d in 1:(N - 1)
