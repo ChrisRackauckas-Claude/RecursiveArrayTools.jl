@@ -367,7 +367,7 @@ values == [[1, 2], [3, 4]]
 ```
 """
 function copyat_or_push!(a::AbstractVector{T}, i::Int, x, perform_copy = true) where {T}
-    i >= 1 || throw(BoundsError(a, i))
+    i >= firstindex(a) || throw(BoundsError(a, i))
     @inbounds if length(a) >= i
         if !ArrayInterface.ismutable(T) || !perform_copy
             # TODO: Check for `setindex!`` if T <: StaticArraysCore.StaticArray and use `copy!(b[i],a[i])`

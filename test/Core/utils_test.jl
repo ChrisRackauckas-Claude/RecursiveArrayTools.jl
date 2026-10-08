@@ -2,6 +2,17 @@ using RecursiveArrayTools, StaticArrays
 using RecursiveArrayToolsShorthandConstructors
 using Test
 
+# A vector whose own indices do not start at 1, e.g. `ZeroVec(v)` has axes
+# `0:length(v)-1`, like `OffsetArrays.OffsetArray(v, 0:length(v)-1)`.
+struct ZeroVec{T} <: AbstractVector{T}
+    data::Vector{T}
+end
+Base.axes(z::ZeroVec) = (0:(length(z.data) - 1),)
+Base.size(z::ZeroVec) = size(z.data)
+Base.getindex(z::ZeroVec, i::Int) = z.data[i + 1]
+Base.setindex!(z::ZeroVec, v, i::Int) = (z.data[i + 1] = v)
+Base.IndexStyle(::Type{<:ZeroVec}) = IndexLinear()
+
 t = collect(range(0, stop = 10, length = 200))
 randomized = VectorOfArray([0.01randn(2) for i in 1:10])
 data = convert(Array, randomized)
@@ -164,7 +175,7 @@ end
     @test b2[2] == [2.0, 2.0]
 end
 
-@testset "copyat_or_push! rejects non-positive indices" begin
+@testset "copyat_or_push! rejects indices below firstindex" begin
     vals = [[1, 2], [3, 4]]
     @test_throws BoundsError copyat_or_push!(vals, 0, [9, 9])
     @test_throws BoundsError copyat_or_push!(vals, -1, [9, 9])
@@ -175,6 +186,15 @@ end
     @test vals[1] == [9, 9]
     copyat_or_push!(vals, 3, [5, 6])
     @test vals == [[9, 9], [3, 4], [5, 6]]
+
+    # a 0-based AbstractVector's own index 0 is in-bounds and must still
+    # update, matching master: the bounds check is against `firstindex(a)`,
+    # not the literal `1`.
+    z = ZeroVec([[1, 2], [3, 4]])
+    copyat_or_push!(z, 0, [9, 9])
+    @test z[0] == [9, 9]
+    @test z[1] == [3, 4]
+    @test_throws BoundsError copyat_or_push!(z, -1, [9, 9])
 end
 
 # OrdinaryDiffEq.jl#1365: recursivecopy must not broadcast-assign into an
