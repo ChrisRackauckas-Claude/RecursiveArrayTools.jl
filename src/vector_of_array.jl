@@ -1045,6 +1045,13 @@ function Base.append!(
 end
 
 function Base.stack(VA::AbstractVectorOfArray; dims = :)
+    # `stack.(VA.u)` exists to collapse any nested `AbstractVectorOfArray`
+    # (or other non-numeric-array) elements of `VA.u` into plain arrays before
+    # the outer `stack`. When the elements are already plain numeric arrays,
+    # that inner `stack.()` call is a redundant elementwise copy.
+    if eltype(VA.u) <: AbstractArray{<:Number}
+        return stack(VA.u; dims)
+    end
     return stack(stack.(VA.u); dims)
 end
 
